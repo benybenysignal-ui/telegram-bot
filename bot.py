@@ -1,11 +1,14 @@
 import os
 import logging
+import asyncio
 from telegram import Update
 from telegram.ext import Application, ChatJoinRequestHandler, ContextTypes
 
+# ===== Logging =====
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 log = logging.getLogger("autojoin-bot")
 
+# ===== Config =====
 TOKEN = os.environ.get("BOT_TOKEN")
 
 async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -19,7 +22,7 @@ async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         log.exception("❌ Failed approving: %s", e)
 
-def main():
+async def main():
     if not TOKEN:
         log.error("Missing BOT_TOKEN env var.")
         raise SystemExit(1)
@@ -27,20 +30,15 @@ def main():
     log.info("✅ Bot starting… waiting for join requests")
     app = Application.builder().token(TOKEN).build()
 
-    # נקה webhook אם היה, וזרוק עדכונים תלויים כדי למנוע קונפליקטים
-    async def _startup(_: Application):
-        try:
-            await app.bot.delete_webhook(drop_pending_updates=True)
-            log.info("Webhook deleted (drop_pending_updates=True)")
-        except Exception as e:
-            log.warning("Couldn't delete webhook: %s", e)
+    # נקה webhook ישן
+    await app.bot.delete_webhook(drop_pending_updates=True)
+    log.info("Webhook deleted (drop_pending_updates=True)")
 
-    app.post_init = _startup  # יופעל לפני התחלת ה-polling
-
+    # הוסף Handler להצטרפויות
     app.add_handler(ChatJoinRequestHandler(auto_approve))
 
-    # הרצת polling עם כל סוגי העדכונים
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # הרץ Polling עם סינון רק להצטרפויות
+    await app.run_polling(allowed_updates=["chat_join_request"])
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
